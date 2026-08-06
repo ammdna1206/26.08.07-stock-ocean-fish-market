@@ -11,7 +11,7 @@ if (scriptMatch) {
   const script = fs.readFileSync(scriptPath, 'utf8');
   const safeScript = script.replace(/<\/script/gi, '<\\/script');
   html = html.replace(scriptMatch[0], '');
-  html = html.replace('</body>', `  <script type="module">${safeScript}</script>\n  </body>`);
+  html = html.replace('</body>', `  <script>${safeScript}</script>\n  </body>`);
 }
 
 html = html.replace(/<script[^>]*src=["'][^"']+\.js["'][^>]*><\/script>/gi, '');
