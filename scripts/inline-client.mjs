@@ -11,7 +11,9 @@ if (scriptMatch) {
   const script = fs.readFileSync(scriptPath, 'utf8');
   const safeScript = script.replace(/<\/script/gi, '<\\/script');
   html = html.replace(scriptMatch[0], '');
-  html = html.replace('</body>', `  <script>${safeScript}</script>\n  </body>`);
+  // 使用函式型 replacement，避免 JavaScript 內的 `$&`、`$'`、`$`` 等字元
+  // 被 String.prototype.replace 當成替換語法，破壞內嵌腳本內容。
+  html = html.replace('</body>', () => `  <script>${safeScript}</script>\n  </body>`);
 }
 
 html = html.replace(/<script[^>]*src=["'][^"']+\.js["'][^>]*><\/script>/gi, '');
