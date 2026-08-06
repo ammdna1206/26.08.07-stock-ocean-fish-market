@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -23,7 +22,7 @@ app.use(cors({ origin: (origin, callback) => {
 app.use(express.json({ limit: '100kb' }));
 app.use(rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false, message: { success: false, message: '請求過於頻繁，請稍後再試' } }));
 app.use('/api', createApiRouter());
-const clientDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../client');
+const clientDirectory = path.resolve(process.cwd(), 'dist/client');
 app.use(express.static(clientDirectory));
 app.use((request, response) => {
   if (request.method === 'GET' && request.accepts('html')) {
