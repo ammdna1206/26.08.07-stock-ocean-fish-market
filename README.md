@@ -38,6 +38,16 @@ npm start
 | `UPSTREAM_TIMEOUT_MS` | `3500` | 官方資料請求逾時時間 |
 | `DB_PATH` | `./data/market.sqlite` | SQLite 檔案位置 |
 
+## 公開網址
+
+本專案包含 GitHub Actions 工作流程，可將前端示範版本部署至 GitHub Pages。公開版本使用內建 96 檔示範行情，不需要另外啟動 Express API，適合直接在桌機、平板與手機瀏覽；本機或正式後端模式仍可使用 TWSE、TPEx Provider。
+
+推送 `main` 分支後，工作流程會自動建置公開頁面：
+
+`https://ammdna1206.github.io/26.08.07-stock-ocean-fish-market/`
+
+若 Repository 尚未啟用 Pages，請至 GitHub Repository 的 **Settings → Pages**，將 **Source** 設為 **GitHub Actions**。
+
 ## 已完成功能
 
 - React + TypeScript + Vite 前端、Express + TypeScript 後端、SQLite 快取。
