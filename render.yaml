@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: stock-ocean-fish-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATA_PROVIDER
+        value: auto
+      - key: CLIENT_ORIGIN
+        value: https://ammdna1206.github.io
+      - key: UPSTREAM_TIMEOUT_MS
+        value: "8000"
+      - key: DB_PATH
+        value: /tmp/market.sqlite
