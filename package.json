@@ -1,0 +1,49 @@
+{
+  "name": "stock-ocean-fish-market",
+  "version": "1.0.0",
+  "private": true,
+  "description": "股海大江——台股魚群行情平台",
+  "scripts": {
+    "dev": "concurrently \"tsx watch server/src/index.ts\" \"vite --config client/vite.config.ts --host 0.0.0.0\"",
+    "dev:client": "vite --config client/vite.config.ts --host 0.0.0.0",
+    "dev:server": "tsx watch server/src/index.ts",
+    "build": "vite build --config client/vite.config.ts && tsc -p server/tsconfig.json",
+    "build:client": "vite build --config client/vite.config.ts",
+    "build:server": "tsc -p server/tsconfig.json",
+    "start": "node dist/server/src/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "axios": "latest",
+    "better-sqlite3": "latest",
+    "cors": "latest",
+    "dayjs": "latest",
+    "dotenv": "latest",
+    "echarts": "latest",
+    "express": "latest",
+    "express-rate-limit": "latest",
+    "helmet": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@tailwindcss/forms": "^0.5.9",
+    "@types/better-sqlite3": "latest",
+    "@types/cors": "latest",
+    "@types/express": "latest",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "latest",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "tsx": "latest",
+    "typescript": "latest",
+    "vite": "latest",
+    "vitest": "latest"
+  }
+}
