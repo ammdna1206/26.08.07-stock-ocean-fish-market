@@ -4,5 +4,4 @@ data
 .git
 .pnpm-store
 .env
-client
 docs/screenshots
