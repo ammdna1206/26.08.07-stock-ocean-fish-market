@@ -14,9 +14,10 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json ./
 COPY server/tsconfig.json server/tsconfig.json
 RUN pnpm install --frozen-lockfile
 
+COPY client client
 COPY server server
 COPY shared shared
-RUN pnpm build:server
+RUN pnpm build:client && pnpm build:server
 
 FROM node:22-bookworm-slim AS runtime
 
