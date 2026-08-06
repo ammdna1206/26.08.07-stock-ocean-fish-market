@@ -5,13 +5,16 @@ const outputDirectory = path.resolve(process.cwd(), 'dist/client');
 const htmlPath = path.join(outputDirectory, 'index.html');
 let html = fs.readFileSync(htmlPath, 'utf8');
 
-const scriptMatch = html.match(/<script type="module" crossorigin src="([^"]+)"><\/script>/);
+const scriptMatch = html.match(/<script[^>]*src=["']([^"']+\.js)["'][^>]*><\/script>/i);
 if (scriptMatch) {
   const scriptPath = path.join(outputDirectory, scriptMatch[1].replace(/^\//, ''));
   const script = fs.readFileSync(scriptPath, 'utf8');
   const safeScript = script.replace(/<\/script/gi, '<\\/script');
-  html = html.replace(scriptMatch[0], `<script type="module">${safeScript}</script>`);
+  html = html.replace(scriptMatch[0], '');
+  html = html.replace('</body>', `  <script type="module">${safeScript}</script>\n  </body>`);
 }
+
+html = html.replace(/<script[^>]*src=["'][^"']+\.js["'][^>]*><\/script>/gi, '');
 
 const styleMatch = html.match(/<link rel="stylesheet" crossorigin href="([^"]+)">/);
 if (styleMatch) {
