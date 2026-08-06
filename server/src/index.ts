@@ -7,9 +7,17 @@ import { createApiRouter } from './api';
 
 const app = express();
 const port = Number(process.env.PORT ?? 4000);
+const allowedOrigins = (process.env.CLIENT_ORIGIN ?? 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
+app.set('trust proxy', 1);
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-app.use(cors({ origin: process.env.CLIENT_ORIGIN?.split(',') ?? ['http://localhost:5173'] }));
+app.use(cors({ origin: (origin, callback) => {
+  if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+  return callback(new Error('此來源未被允許存取 API'));
+} }));
 app.use(express.json({ limit: '100kb' }));
 app.use(rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false, message: { success: false, message: '請求過於頻繁，請稍後再試' } }));
 app.use('/api', createApiRouter());
