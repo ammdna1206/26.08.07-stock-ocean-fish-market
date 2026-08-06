@@ -14,7 +14,15 @@ const allowedOrigins = (process.env.CLIENT_ORIGIN ?? 'http://localhost:5173')
   .filter(Boolean);
 
 app.set('trust proxy', 1);
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      // 公開部署會將 Vite 前端包成單一內嵌腳本，避免部分瀏覽器阻擋外部資產。
+      'script-src': ["'self'", "'unsafe-inline'"],
+    },
+  },
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 app.use(cors({ origin: (origin, callback) => {
   if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
   return callback(new Error('此來源未被允許存取 API'));
@@ -33,7 +41,7 @@ app.use((request, response) => {
 app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => response.status(500).json({ success: false, data: {}, source: 'SYSTEM', isDemo: false, updatedAt: new Date().toISOString(), message: error instanceof Error ? error.message : '伺服器發生未預期錯誤' }));
 
 app.listen(port, () => {
-  console.log('股海大江 API 已啟動：http://localhost:' + port);
+  console.log(`股海大江 API 已啟動：http://localhost:${port}`);
 });
 
 export { app };
