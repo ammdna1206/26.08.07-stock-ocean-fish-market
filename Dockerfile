@@ -17,7 +17,8 @@ RUN pnpm install --frozen-lockfile
 COPY client client
 COPY server server
 COPY shared shared
-RUN pnpm build:client && pnpm build:server
+COPY scripts scripts
+RUN pnpm build:client && node scripts/inline-client.mjs && pnpm build:server
 
 FROM node:22-bookworm-slim AS runtime
 
