@@ -9,7 +9,8 @@ const scriptMatch = html.match(/<script type="module" crossorigin src="([^"]+)">
 if (scriptMatch) {
   const scriptPath = path.join(outputDirectory, scriptMatch[1].replace(/^\//, ''));
   const script = fs.readFileSync(scriptPath, 'utf8');
-  html = html.replace(scriptMatch[0], `<script type="module">${script}</script>`);
+  const safeScript = script.replace(/<\/script/gi, '<\\/script');
+  html = html.replace(scriptMatch[0], `<script type="module">${safeScript}</script>`);
 }
 
 const styleMatch = html.match(/<link rel="stylesheet" crossorigin href="([^"]+)">/);
