@@ -31,9 +31,10 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build static public demo
+      - name: Build public client
         env:
-          VITE_STATIC_DEMO: 'true'
+          VITE_STATIC_DEMO: 'false'
+          VITE_API_BASE_URL: 'https://stock-ocean-fish-api.onrender.com/api'
         run: pnpm build:client
       - name: Configure Pages
         uses: actions/configure-pages@v5
