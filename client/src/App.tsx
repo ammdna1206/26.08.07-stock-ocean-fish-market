@@ -5,10 +5,11 @@ import { getDateStatus, getHistory, getStock, getStocks, getSummary } from './ap
 import type { DateStatus } from './api';
 import { FishCanvas } from './components/FishCanvas';
 import { StockChart, VolumeChart } from './components/StockChart';
+import { latestCompletedTradingDate } from './trading-date';
 import './styles.css';
 
 const FAVORITES_KEY = 'stock-ocean-favorites';
-const initialDate = '2026-08-05';
+const initialDate = latestCompletedTradingDate();
 
 function number(value: number | null | undefined, digits = 0): string {
   return value === null || value === undefined || !Number.isFinite(value) ? '資料來源未提供' : value.toLocaleString('zh-TW', { minimumFractionDigits: digits, maximumFractionDigits: digits });
@@ -61,7 +62,8 @@ function App() {
         setStocks([]); setSummary(null); setNotice('此日期不是台股交易日，是否改為查詢前一個交易日？'); setLoading(false); setProgress(0); return;
       }
       setNotice('正在向後端取得行情，會優先使用官方資料，無法連線時自動切換示範資料。');
-      const [stocksResponse, summaryResponse] = await Promise.all([getStocks(targetDate, query), getSummary(targetDate)]);
+      const stocksResponse = await getStocks(targetDate, query);
+      const summaryResponse = await getSummary(targetDate);
       setProgress(82);
       if (!stocksResponse.success) throw new Error(stocksResponse.message);
       setStocks(stocksResponse.data.stocks); setSummary(summaryResponse.data); setSource(stocksResponse.source); setIsDemo(stocksResponse.isDemo); setUpdatedAt(stocksResponse.updatedAt); setNotice(stocksResponse.message); setProgress(100);
@@ -142,7 +144,7 @@ function App() {
         <div className="stage-footer"><span>魚身大小＝成交金額</span><span>游動速度＝成交活躍程度</span><span>拖曳畫布平移・滾輪縮放・點擊魚群查看詳情</span><span>資訊展示與教學研究用途</span></div>
       </section>
 
-      {summary && <Dashboard summary={summary} onSelect={selectBySymbol} />}
+      {summary && <Dashboard summary={summary} isDemo={isDemo} onSelect={selectBySymbol} />}
     </main>
 
     {detail && <aside className="detail-drawer"><div className="drawer-header"><div><p className="eyebrow">SELECTED STOCK</p><h2>{detail.symbol} <span>{detail.name}</span></h2></div><button className="icon-button" onClick={() => setSelected(null)} aria-label="關閉詳細資料">×</button></div><div className="drawer-meta"><span>{detail.market === 'TWSE' ? '上市 TWSE' : '上櫃 TPEx'}</span><span>{detail.industry}</span><span>{detail.tradeDate}</span></div><div className={`detail-price ${Number(detail.changePercent) >= 0 ? 'text-up' : 'text-down'}`}><strong>{number(detail.close, 2)}</strong><span>{number(detail.change, 2)}　{percent(detail.changePercent)}</span></div><div className="metric-grid">{[['開盤價', number(detail.open, 2)], ['最高價', number(detail.high, 2)], ['最低價', number(detail.low, 2)], ['昨收', number(detail.previousClose, 2)], ['成交股數', number(detail.volume)], ['成交筆數', number(detail.transactionCount)], ['成交金額', number(detail.turnover)], ['當日振幅', percent(detail.amplitude)], ['本益比', number(detail.peRatio, 2)], ['殖利率', percent(detail.dividendYield)], ['股價淨值比', number(detail.priceToBookRatio, 2)], ['交易狀態', detail.status || '一般交易']].map(([label, value]) => <div className="metric-card" key={label}><span>{label}</span><b>{value}</b></div>)}</div><div className="chart-section"><div className="chart-title"><span>走勢觀測</span>{!history.length && <button className="link-button" onClick={() => void loadHistory()}>載入近期走勢</button>}</div><StockChart quote={detail} history={history} /><VolumeChart quote={detail} history={history} /></div><div className="drawer-actions"><button className={`secondary-button ${selectedIsFavorite ? 'favorite-active' : ''}`} onClick={toggleFavorite}>{selectedIsFavorite ? '★ 已加入自選' : '☆ 加入自選'}</button><button className="secondary-button" onClick={() => void copyInfo()}>▣ 複製資訊</button></div><div className="data-source-note">資料來源：{detail.source}<br />更新時間：{dayjs(detail.updatedAt).format('YYYY-MM-DD HH:mm:ss')}<br />未提供欄位以「資料來源未提供」表示。</div></aside>}
@@ -150,10 +152,13 @@ function App() {
   </div>;
 }
 
-function Dashboard({ summary, onSelect }: { summary: MarketSummary; onSelect: (symbol: string) => void }) {
-  const statCards = [['上漲家數', summary.rising, 'text-up'], ['下跌家數', summary.falling, 'text-down'], ['平盤家數', summary.flat, ''], ['無成交家數', summary.noTrade, ''], ['成交總金額', number(summary.totalTurnover), '']];
+function Dashboard({ summary, isDemo, onSelect }: { summary: MarketSummary; isDemo: boolean; onSelect: (symbol: string) => void }) {
+  const twseTurnover = summary.marketComparison.find((item) => item.market === 'TWSE')?.turnover ?? 0;
+  const tpexTurnover = summary.marketComparison.find((item) => item.market === 'TPEx')?.turnover ?? 0;
+  const turnoverSource = isDemo ? '示範' : '官方';
+  const statCards = [['上漲家數', summary.rising, 'text-up'], ['下跌家數', summary.falling, 'text-down'], ['平盤家數', summary.flat, ''], ['無成交家數', summary.noTrade, ''], [`兩市${turnoverSource}成交總額`, number(summary.totalTurnover), ''], [`上市${turnoverSource}成交總額`, number(twseTurnover), ''], [`上櫃${turnoverSource}成交總額`, number(tpexTurnover), '']];
   const table = (title: string, rows: StockQuote[], value: (stock: StockQuote) => string, tone: string) => <div className="ranking-card"><div className="ranking-heading"><span>{title}</span><small>TOP 10</small></div>{rows.slice(0, 5).map((stock, index) => <button className="ranking-row" key={stock.symbol} onClick={() => onSelect(stock.symbol)}><em>{String(index + 1).padStart(2, '0')}</em><span><b>{stock.symbol}</b> {stock.name}</span><strong className={tone}>{value(stock)}</strong></button>)}</div>;
-  return <section className="dashboard-section"><div className="section-title"><div><p className="eyebrow">MARKET DASHBOARD</p><h2>今日市場摘要</h2></div><span className="dashboard-count">查詢股票 {number(summary.total)} 檔・成功 {number(summary.successCount)}・失敗 {number(summary.failureCount)}</span></div><div className="stat-grid">{statCards.map(([label, value, tone]) => <div className="stat-card" key={label}><span>{label}</span><b className={tone}>{value}</b></div>)}</div><div className="dashboard-grid">{table('成交量最大', summary.topVolume, (stock) => number(stock.volume), '')}{table('漲幅前段', summary.topGainers, (stock) => percent(stock.changePercent), 'text-up')}{table('跌幅前段', summary.topLosers, (stock) => percent(stock.changePercent), 'text-down')}<div className="industry-card"><div className="ranking-heading"><span>產業平均漲跌幅</span><small>{summary.industryPerformance.length} 個產業</small></div>{summary.industryPerformance.slice(0, 8).map((item) => <div className="industry-row" key={item.industry}><span>{item.industry}</span><div className="industry-bar"><i className={item.averageChangePercent >= 0 ? 'bar-up' : 'bar-down'} style={{ width: `${Math.min(Math.abs(item.averageChangePercent) * 15 + 4, 100)}%` }} /></div><b className={item.averageChangePercent >= 0 ? 'text-up' : 'text-down'}>{percent(item.averageChangePercent)}</b></div>)}</div></div><div className="market-compare">{summary.marketComparison.map((item) => <div key={item.market}><span>{item.market === 'TWSE' ? '上市 TWSE' : '上櫃 TPEx'}</span><b>{number(item.total)} 檔</b><strong className={item.averageChangePercent >= 0 ? 'text-up' : 'text-down'}>{percent(item.averageChangePercent)}</strong><small>成交金額 {number(item.turnover)}</small></div>)}</div></section>;
+  return <section className="dashboard-section"><div className="section-title"><div><p className="eyebrow">MARKET DASHBOARD</p><h2>今日市場摘要</h2></div><span className="dashboard-count">查詢股票 {number(summary.total)} 檔・成功 {number(summary.successCount)}・失敗 {number(summary.failureCount)}<br />市場成交總額含各類證券；魚群僅呈現普通股</span></div><div className="stat-grid">{statCards.map(([label, value, tone]) => <div className="stat-card" key={label}><span>{label}</span><b className={tone}>{value}</b></div>)}</div><div className="dashboard-grid">{table('成交量最大', summary.topVolume, (stock) => number(stock.volume), '')}{table('漲幅前段', summary.topGainers, (stock) => percent(stock.changePercent), 'text-up')}{table('跌幅前段', summary.topLosers, (stock) => percent(stock.changePercent), 'text-down')}<div className="industry-card"><div className="ranking-heading"><span>產業平均漲跌幅</span><small>{summary.industryPerformance.length} 個產業</small></div>{summary.industryPerformance.slice(0, 8).map((item) => <div className="industry-row" key={item.industry}><span>{item.industry}</span><div className="industry-bar"><i className={item.averageChangePercent >= 0 ? 'bar-up' : 'bar-down'} style={{ width: `${Math.min(Math.abs(item.averageChangePercent) * 15 + 4, 100)}%` }} /></div><b className={item.averageChangePercent >= 0 ? 'text-up' : 'text-down'}>{percent(item.averageChangePercent)}</b></div>)}</div></div><div className="market-compare">{summary.marketComparison.map((item) => <div key={item.market}><span>{item.market === 'TWSE' ? '上市 TWSE' : '上櫃 TPEx'}</span><b>{number(item.total)} 檔</b><strong className={item.averageChangePercent >= 0 ? 'text-up' : 'text-down'}>{percent(item.averageChangePercent)}</strong><small>市場成交總額 {number(item.turnover)}</small></div>)}</div></section>;
 }
 
 export default App;

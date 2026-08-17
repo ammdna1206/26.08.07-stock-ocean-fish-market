@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import type { HistoryPoint, MarketSummary, StocksQuery, StockQuote } from '../../../shared/types';
+import type { HistoryPoint, Market, MarketSummary, StocksQuery, StockQuote } from '../../../shared/types';
 import { MarketDatabase } from '../db';
 import { buildDemoQuotes, MockProvider, TpexProvider, TwseProvider } from '../data/provider';
 import { directionOf } from '../utils/number';
@@ -13,6 +13,7 @@ export interface DailyResult {
   updatedAt: string;
   message: string;
   failureCount: number;
+  marketTurnover: Partial<Record<Market, number>>;
 }
 
 export class MarketService {
@@ -25,10 +26,17 @@ export class MarketService {
   }
 
   async getDaily(tradeDate: string): Promise<DailyResult> {
-    const cached = this.database.getDaily(tradeDate);
-    if (cached) return { ...cached, message: cached.isDemo ? '目前使用示範資料（SQLite 快取）' : '已讀取 SQLite 快取資料', failureCount: 0 };
-
     const providerMode = (process.env.DATA_PROVIDER ?? 'auto').toLowerCase();
+    const cached = this.database.getDaily(tradeDate);
+    if (cached) {
+      const age = Date.now() - new Date(cached.updatedAt).getTime();
+      const taiwanDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date());
+      const officialFresh = tradeDate !== taiwanDate || age < Number(process.env.OFFICIAL_CACHE_TTL_MS ?? 300_000);
+      const demoFresh = age < Number(process.env.DEMO_CACHE_TTL_MS ?? 60_000);
+      const canUseCache = providerMode === 'demo' ? cached.isDemo : cached.isDemo ? demoFresh : officialFresh;
+      if (canUseCache) return { ...cached, message: cached.isDemo ? '目前使用示範資料（SQLite 短期快取）' : '已讀取 SQLite 快取資料', failureCount: 0 };
+    }
+
     let result: DailyResult | null = null;
     if (providerMode !== 'demo') {
       const attempts = await Promise.allSettled(this.official.map((provider) => provider.fetchDaily(tradeDate)));
@@ -36,12 +44,14 @@ export class MarketService {
       const quotes = [...new Map(successful.flatMap((item) => item.quotes).map((quote) => [`${quote.market}:${quote.symbol}`, quote])).values()];
       if (quotes.length >= 5) {
         const source = successful.map((item) => item.source).join('+');
-        result = { tradeDate, quotes, source, isDemo: false, updatedAt: dayjs().toISOString(), message: `已取得官方資料，共 ${quotes.length} 檔`, failureCount: attempts.length - successful.length };
+        const marketTurnover = Object.fromEntries(successful.filter((item) => item.source === 'TWSE' || item.source === 'TPEx').map((item) => [item.source, item.marketTurnover])) as Partial<Record<Market, number>>;
+        result = { tradeDate, quotes, source, isDemo: false, updatedAt: dayjs().toISOString(), message: `已取得官方資料，共 ${quotes.length} 檔`, failureCount: attempts.length - successful.length, marketTurnover };
       }
     }
     if (!result) {
       const demoResult = await this.demo.fetchDaily(tradeDate);
-      result = { tradeDate, quotes: demoResult.quotes, source: 'DEMO', isDemo: true, updatedAt: dayjs().toISOString(), message: '目前使用示範資料（官方資料暫時無法取得）', failureCount: 0 };
+      const marketTurnover = Object.fromEntries((['TWSE', 'TPEx'] as const).map((market) => [market, demoResult.quotes.filter((quote) => quote.market === market).reduce((total, quote) => total + quote.turnover, 0)]));
+      result = { tradeDate, quotes: demoResult.quotes, source: 'DEMO', isDemo: true, updatedAt: dayjs().toISOString(), message: '目前使用示範資料（官方資料暫時無法取得）', failureCount: 0, marketTurnover };
     }
     this.database.setDaily(result);
     return result;
@@ -80,7 +90,7 @@ export class MarketService {
     });
   }
 
-  summary(quotes: StockQuote[], failureCount = 0): MarketSummary {
+  summary(quotes: StockQuote[], failureCount = 0, officialMarketTurnover: Partial<Record<Market, number>> = {}): MarketSummary {
     const active = quotes.filter((quote) => quote.volume > 0);
     const byChange = (quote: StockQuote) => quote.changePercent ?? 0;
     const group = new Map<string, StockQuote[]>();
@@ -88,12 +98,12 @@ export class MarketService {
     const industryPerformance = [...group.entries()].map(([industry, items]) => ({ industry, count: items.length, averageChangePercent: Number((items.reduce((total, quote) => total + byChange(quote), 0) / items.length).toFixed(2)) })).sort((a, b) => b.averageChangePercent - a.averageChangePercent);
     const marketComparison = (['TWSE', 'TPEx'] as const).map((market) => {
       const items = quotes.filter((quote) => quote.market === market);
-      return { market, total: items.length, averageChangePercent: Number((items.reduce((total, quote) => total + byChange(quote), 0) / Math.max(items.length, 1)).toFixed(2)), turnover: items.reduce((total, quote) => total + quote.turnover, 0) };
+      return { market, total: items.length, averageChangePercent: Number((items.reduce((total, quote) => total + byChange(quote), 0) / Math.max(items.length, 1)).toFixed(2)), turnover: officialMarketTurnover[market] ?? items.reduce((total, quote) => total + quote.turnover, 0) };
     });
     return {
       total: quotes.length, rising: quotes.filter((quote) => byChange(quote) > 0).length, falling: quotes.filter((quote) => byChange(quote) < 0).length,
       flat: quotes.filter((quote) => byChange(quote) === 0 && quote.volume > 0).length, noTrade: quotes.filter((quote) => quote.volume === 0).length,
-      totalTurnover: quotes.reduce((total, quote) => total + quote.turnover, 0),
+      totalTurnover: marketComparison.reduce((total, market) => total + market.turnover, 0),
       topVolume: [...active].sort((a, b) => b.volume - a.volume).slice(0, 10), topGainers: [...active].sort((a, b) => byChange(b) - byChange(a)).slice(0, 10), topLosers: [...active].sort((a, b) => byChange(a) - byChange(b)).slice(0, 10),
       industryPerformance, marketComparison, successCount: quotes.length, failureCount,
     };
@@ -109,7 +119,7 @@ export class MarketService {
   async getHistory(symbol: string, days: number, tradeDate?: string): Promise<{ points: HistoryPoint[]; source: string; isDemo: boolean; updatedAt: string; message: string }> {
     const safeDays = Math.min(Math.max(days, 5), 60);
     const date = tradeDate ?? dayjs().format('YYYY-MM-DD');
-    const key = `${date}:${symbol}:${safeDays}`;
+    const key = `v2:${date}:${symbol}:${safeDays}`;
     const cached = this.database.getHistory(key);
     if (cached) return { ...(cached.payload as { points: HistoryPoint[] }), source: cached.source, isDemo: cached.isDemo, updatedAt: cached.updatedAt, message: '已讀取近期走勢快取' };
     const daily = await this.getDaily(date);

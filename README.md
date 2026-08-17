@@ -35,7 +35,7 @@ npm start
 | `PORT` | `4000` | Express API 連接埠 |
 | `CLIENT_ORIGIN` | `http://localhost:5173` | CORS 允許來源，可用逗號分隔 |
 | `DATA_PROVIDER` | `auto` | `auto` 優先呼叫 TWSE／TPEx，失敗回退 `DEMO`；也可設 `demo` |
-| `UPSTREAM_TIMEOUT_MS` | `3500` | 官方資料請求逾時時間 |
+| `UPSTREAM_TIMEOUT_MS` | `15000` | 官方資料請求逾時時間；TPEx 每日檔案較大，不宜設得過短 |
 | `DB_PATH` | `./data/market.sqlite` | SQLite 檔案位置 |
 
 ## 公開網址
@@ -56,14 +56,15 @@ npm start
 - 96 檔以上示範股票，包含上市與上櫃、產業、無成交、漲跌與基本估值欄位缺值示範。
 - Canvas 魚群：景深背景、水波、光影、光圈、魚身代號、碰撞避讓、拖曳、縮放、搜尋聚焦、暫停、LOD（最多繪製 180 條）、鍵盤焦點與 reduced-motion 靜態模式。
 - 股票詳情：OHLC、成交量、近 20 交易日示範走勢、自選股、複製資訊、資料來源與更新時間。
-- 市場摘要：漲跌平盤、無成交、成交總金額、成交量／漲幅／跌幅排行、產業平均、上市／上櫃比較。
+- 市場摘要：漲跌平盤、無成交、兩市官方成交總額、成交量／漲幅／跌幅排行、產業平均、上市／上櫃比較。市場總額包含官方統計的各類證券，魚群則僅呈現普通股。
 - API 參數驗證、Helmet、CORS、請求頻率限制、官方上游逾時、錯誤回退、XSS 由 React 編碼處理、SQLite 參數化查詢。
 - 繁體中文介面、桌面／平板／手機版、台股紅漲綠跌、免責聲明。
 
 ## 官方資料來源
 
-- 臺灣證券交易所公開資料：`MI_INDEX` 每日收盤行情與交易資料。
-- 證券櫃檯買賣中心公開資料：`DAILY_CLOSE_quotes/stk_quote_result.php` 每日收盤行情。
+- 臺灣證券交易所公開資料：`MI_INDEX` 每日收盤行情與交易資料；依官方漲跌符號還原正負值。
+- 證券櫃檯買賣中心公開資料：`DAILY_CLOSE_quotes/stk_quote_result.php` 每日收盤行情；依回傳欄名解析並校驗資料日期。
+- 官方資料會排除 ETF、債券、權證等非普通股商品，只保留四位數普通股代號。
 - TWSE 另提供 OpenAPI 入口，正式環境可依授權與欄位需求替換 `TwseProvider`：<https://openapi.twse.com.tw/>
 
 前端不直接呼叫官方 API，所有上游請求由 Express Provider 代理、清理與寫入 SQLite。不同日期的快取以 `trade_date` 為鍵；歷史走勢另以股票、日期與天數組合快取。

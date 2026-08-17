@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
-import type { StockQuote } from '../../shared/types';
+import type { Market, StockQuote } from '../../shared/types';
+
+const DAILY_CACHE_VERSION = 3;
 
 export interface CachedDaily {
   tradeDate: string;
@@ -9,6 +11,7 @@ export interface CachedDaily {
   source: string;
   isDemo: boolean;
   updatedAt: string;
+  marketTurnover: Partial<Record<Market, number>>;
 }
 
 export class MarketDatabase {
@@ -25,7 +28,9 @@ export class MarketDatabase {
         payload TEXT NOT NULL,
         source TEXT NOT NULL,
         is_demo INTEGER NOT NULL DEFAULT 0,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        market_turnover TEXT NOT NULL DEFAULT '{}',
+        schema_version INTEGER NOT NULL DEFAULT ${DAILY_CACHE_VERSION}
       );
       CREATE TABLE IF NOT EXISTS history_cache (
         cache_key TEXT PRIMARY KEY,
@@ -35,17 +40,24 @@ export class MarketDatabase {
         updated_at TEXT NOT NULL
       );
     `);
+    const dailyColumns = this.db.pragma('table_info(daily_cache)') as Array<{ name: string }>;
+    if (!dailyColumns.some((column) => column.name === 'schema_version')) {
+      this.db.exec('ALTER TABLE daily_cache ADD COLUMN schema_version INTEGER NOT NULL DEFAULT 1');
+    }
+    if (!dailyColumns.some((column) => column.name === 'market_turnover')) {
+      this.db.exec("ALTER TABLE daily_cache ADD COLUMN market_turnover TEXT NOT NULL DEFAULT '{}'");
+    }
   }
 
   getDaily(tradeDate: string): CachedDaily | null {
-    const row = this.db.prepare('SELECT * FROM daily_cache WHERE trade_date = ?').get(tradeDate) as { trade_date: string; payload: string; source: string; is_demo: number; updated_at: string } | undefined;
+    const row = this.db.prepare('SELECT * FROM daily_cache WHERE trade_date = ? AND schema_version = ?').get(tradeDate, DAILY_CACHE_VERSION) as { trade_date: string; payload: string; source: string; is_demo: number; updated_at: string; market_turnover: string } | undefined;
     if (!row) return null;
-    return { tradeDate: row.trade_date, quotes: JSON.parse(row.payload) as StockQuote[], source: row.source, isDemo: Boolean(row.is_demo), updatedAt: row.updated_at };
+    return { tradeDate: row.trade_date, quotes: JSON.parse(row.payload) as StockQuote[], source: row.source, isDemo: Boolean(row.is_demo), updatedAt: row.updated_at, marketTurnover: JSON.parse(row.market_turnover) as Partial<Record<Market, number>> };
   }
 
   setDaily(cache: CachedDaily): void {
-    this.db.prepare(`INSERT INTO daily_cache (trade_date, payload, source, is_demo, updated_at) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(trade_date) DO UPDATE SET payload=excluded.payload, source=excluded.source, is_demo=excluded.is_demo, updated_at=excluded.updated_at`).run(cache.tradeDate, JSON.stringify(cache.quotes), cache.source, cache.isDemo ? 1 : 0, cache.updatedAt);
+    this.db.prepare(`INSERT INTO daily_cache (trade_date, payload, source, is_demo, updated_at, market_turnover, schema_version) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(trade_date) DO UPDATE SET payload=excluded.payload, source=excluded.source, is_demo=excluded.is_demo, updated_at=excluded.updated_at, market_turnover=excluded.market_turnover, schema_version=excluded.schema_version`).run(cache.tradeDate, JSON.stringify(cache.quotes), cache.source, cache.isDemo ? 1 : 0, cache.updatedAt, JSON.stringify(cache.marketTurnover), DAILY_CACHE_VERSION);
   }
 
   getHistory(key: string): { payload: unknown; source: string; isDemo: boolean; updatedAt: string } | null {

@@ -12,6 +12,6 @@ services:
       - key: CLIENT_ORIGIN
         value: https://ammdna1206.github.io
       - key: UPSTREAM_TIMEOUT_MS
-        value: "8000"
+        value: "15000"
       - key: DB_PATH
         value: /tmp/market.sqlite

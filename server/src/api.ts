@@ -70,7 +70,7 @@ export function createApiRouter(): express.Router {
     if (!tradeDate) return failure(response, '日期格式無效，無法查詢市場摘要');
     try {
       const daily = await service.getDaily(tradeDate);
-      return reply(response, { success: true, data: service.summary(daily.quotes, daily.failureCount), source: daily.source, isDemo: daily.isDemo, updatedAt: daily.updatedAt, message: daily.message });
+      return reply(response, { success: true, data: service.summary(daily.quotes, daily.failureCount, daily.marketTurnover), source: daily.source, isDemo: daily.isDemo, updatedAt: daily.updatedAt, message: daily.message });
     } catch (error) {
       return failure(response, error instanceof Error ? error.message : '市場摘要取得失敗', 502);
     }

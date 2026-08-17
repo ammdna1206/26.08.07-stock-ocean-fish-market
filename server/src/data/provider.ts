@@ -8,6 +8,7 @@ export interface ProviderResult {
   quotes: StockQuote[];
   source: string;
   message: string;
+  marketTurnover: number;
 }
 
 export interface MarketDataProvider {
@@ -101,32 +102,36 @@ export class MockProvider implements MarketDataProvider {
   readonly market = 'DEMO' as const;
 
   async fetchDaily(date: string): Promise<ProviderResult> {
-    return { quotes: buildDemoQuotes(date), source: 'DEMO', message: '目前使用示範資料' };
+    const quotes = buildDemoQuotes(date);
+    return { quotes, source: 'DEMO', message: '目前使用示範資料', marketTurnover: quotes.reduce((total, quote) => total + quote.turnover, 0) };
   }
 }
 
-function normalizedQuote(date: string, row: Record<string, unknown>, market: Market, source: string): StockQuote | null {
+export function normalizeOfficialQuote(date: string, row: Record<string, unknown>, market: Market, source: string): StockQuote | null {
   const symbol = String(row['證券代號'] ?? row['代號'] ?? row['SecuritiesCompanyCode'] ?? '').trim();
   const name = String(row['證券名稱'] ?? row['名稱'] ?? row['CompanyName'] ?? '').trim();
-  if (!/^\d{4,6}[A-Za-z-]*$/.test(symbol) || !name) return null;
-  if (/[購售權證]/.test(name)) return null;
+  if (!/^\d{4}$/.test(symbol) || Number(symbol) < 1000 || !name) return null;
   const open = parseNumber(row['開盤價'] ?? row['開盤'] ?? row['Open']);
   const high = parseNumber(row['最高價'] ?? row['最高'] ?? row['High']);
   const low = parseNumber(row['最低價'] ?? row['最低'] ?? row['Low']);
   const close = parseNumber(row['收盤價'] ?? row['收盤'] ?? row['Close']);
   const statedPreviousClose = parseNumber(row['昨日收盤價'] ?? row['昨收'] ?? row['PreviousClose']);
-  const change = parseNumber(row['漲跌價差'] ?? row['漲跌'] ?? row['Change']);
+  const rawChange = parseNumber(row['漲跌價差'] ?? row['漲跌'] ?? row['Change']);
+  const changeSign = String(row['漲跌(+/-)'] ?? row['漲跌符號'] ?? '').toLowerCase();
+  const change = rawChange === null ? null : changeSign.includes('-') || changeSign.includes('green')
+    ? -Math.abs(rawChange)
+    : changeSign.includes('+') || changeSign.includes('red') ? Math.abs(rawChange) : rawChange;
   const previousClose = statedPreviousClose ?? (close !== null && change !== null ? Number((close - change).toFixed(2)) : null);
   const changePercent = previousClose && change !== null ? Number(((change / previousClose) * 100).toFixed(2)) : null;
-  const volume = Math.round(safeNumber(parseNumber(row['成交股數'] ?? row['成交量'] ?? row['Volume'])));
-  const turnover = Math.round(safeNumber(parseNumber(row['成交金額'] ?? row['成交額'] ?? row['Turnover'])));
+  const volume = Math.round(safeNumber(parseNumber(row['成交股數'] ?? row['成交量'] ?? row['TradingShares'] ?? row['Volume'])));
+  const turnover = Math.round(safeNumber(parseNumber(row['成交金額'] ?? row['成交金額(元)'] ?? row['成交額'] ?? row['TransactionAmount'] ?? row['Turnover'])));
   const suppliedIndustry = row['產業別'] ?? row['Industry'];
   const mappedIndustry = seedStocks.find(([seedSymbol]) => seedSymbol === symbol)?.[3];
   const industry = typeof suppliedIndustry === 'string' && suppliedIndustry.trim() ? suppliedIndustry.trim() : mappedIndustry ?? '資料來源未提供';
   return {
     tradeDate: date, symbol, name, market, industry, open, high, low, close,
     previousClose, change, changePercent, amplitude: high !== null && low !== null && previousClose ? Number((((high - low) / previousClose) * 100).toFixed(2)) : null,
-    volume, transactionCount: parseNumber(row['成交筆數'] ?? row['Transactions']), turnover,
+    volume, transactionCount: parseNumber(row['成交筆數'] ?? row['TransactionNumber'] ?? row['Transactions']), turnover,
     peRatio: parseNumber(row['本益比'] ?? row['PER']), dividendYield: parseNumber(row['殖利率'] ?? row['DividendYield']),
     priceToBookRatio: parseNumber(row['股價淨值比'] ?? row['PBR']), status: String(row['備註'] ?? ''), source, updatedAt: dayjs().toISOString(),
   };
@@ -138,14 +143,19 @@ export class TwseProvider implements MarketDataProvider {
 
   async fetchDaily(date: string): Promise<ProviderResult> {
     const url = `https://www.twse.com.tw/exchangeReport/MI_INDEX?response=json&date=${sourceDate(date)}&type=ALLBUT0999`;
-    const response = await axios.get(url, { timeout: Number(process.env.UPSTREAM_TIMEOUT_MS ?? 3500) });
+    const response = await axios.get(url, { timeout: Number(process.env.UPSTREAM_TIMEOUT_MS ?? 15000) });
+    if (String(response.data?.date ?? '') !== sourceDate(date)) throw new Error('TWSE 回傳日期與查詢日期不一致');
     const tables = Array.isArray(response.data?.tables) ? response.data.tables : [];
     const table = tables.find((candidate: { fields?: string[] }) => candidate.fields?.some((field) => field.includes('證券代號')));
     const fields: string[] = table?.fields ?? [];
     const rows = (table?.data ?? []) as unknown[][];
-    const quotes = rows.map((cells) => normalizedQuote(date, Object.fromEntries(fields.map((field, index) => [field, cells[index]])), 'TWSE', 'TWSE')).filter((quote): quote is StockQuote => Boolean(quote));
+    const quotes = rows.map((cells) => normalizeOfficialQuote(date, Object.fromEntries(fields.map((field, index) => [field, cells[index]])), 'TWSE', 'TWSE')).filter((quote): quote is StockQuote => Boolean(quote));
     if (quotes.length < 5) throw new Error('TWSE 回應格式無法辨識或當日無資料');
-    return { quotes, source: 'TWSE', message: '已取得 TWSE 公開資料' };
+    const summaryTable = tables.find((candidate: { fields?: string[] }) => candidate.fields?.includes('成交統計') && candidate.fields?.includes('成交金額(元)'));
+    const turnoverIndex = summaryTable?.fields?.indexOf('成交金額(元)') ?? -1;
+    const totalRow = (summaryTable?.data as unknown[][] | undefined)?.find((cells) => String(cells[0]).startsWith('總計'));
+    const marketTurnover = turnoverIndex >= 0 ? parseNumber(totalRow?.[turnoverIndex]) : null;
+    return { quotes, source: 'TWSE', message: '已取得 TWSE 公開資料', marketTurnover: marketTurnover ?? quotes.reduce((total, quote) => total + quote.turnover, 0) };
   }
 }
 
@@ -156,11 +166,17 @@ export class TpexProvider implements MarketDataProvider {
   async fetchDaily(date: string): Promise<ProviderResult> {
     const formatted = dayjs(date).format('YYYY/MM/DD');
     const url = `https://www.tpex.org.tw/web/stock/aftertrading/DAILY_CLOSE_quotes/stk_quote_result.php?l=zh-tw&o=json&d=${formatted}&s=0,asc,0`;
-    const response = await axios.get(url, { timeout: Number(process.env.UPSTREAM_TIMEOUT_MS ?? 3500) });
-    const rows = (response.data?.tables?.[0]?.data ?? response.data?.aaData ?? []) as unknown[][];
-    const fields = ['證券代號', '證券名稱', '收盤價', '漲跌', '最高價', '最低價', '成交量', '成交筆數', '成交金額'];
-    const quotes = rows.map((cells) => normalizedQuote(date, Object.fromEntries(fields.map((field, index) => [field, cells[index]])), 'TPEx', 'TPEx')).filter((quote): quote is StockQuote => Boolean(quote));
+    const response = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(Number(process.env.UPSTREAM_TIMEOUT_MS ?? 15000)) });
+    if (!response.ok) throw new Error(`TPEx 回應失敗（HTTP ${response.status}）`);
+    const data = await response.json() as { date?: string; tables?: Array<{ fields?: string[]; data?: unknown[][] }> };
+    if (String(data.date ?? '') !== sourceDate(date)) throw new Error('TPEx 回傳日期與查詢日期不一致');
+    const table = data.tables?.find((candidate) => candidate.fields?.includes('代號'));
+    const fields: string[] = table?.fields ?? [];
+    const rows = (table?.data ?? []) as unknown[][];
+    const quotes = rows.map((cells) => normalizeOfficialQuote(date, Object.fromEntries(fields.map((field, index) => [field, cells[index]])), 'TPEx', 'TPEx')).filter((quote): quote is StockQuote => Boolean(quote));
     if (quotes.length < 5) throw new Error('TPEx 回應格式無法辨識或當日無資料');
-    return { quotes, source: 'TPEx', message: '已取得 TPEx 公開資料' };
+    const turnoverIndex = fields.indexOf('成交金額(元)');
+    const marketTurnover = turnoverIndex >= 0 ? rows.reduce((total, cells) => total + safeNumber(parseNumber(cells[turnoverIndex])), 0) : quotes.reduce((total, quote) => total + quote.turnover, 0);
+    return { quotes, source: 'TPEx', message: '已取得 TPEx 公開資料', marketTurnover };
   }
 }
