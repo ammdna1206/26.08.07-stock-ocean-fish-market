@@ -164,9 +164,25 @@ export class TpexProvider implements MarketDataProvider {
   readonly market = 'TPEx' as const;
 
   async fetchDaily(date: string): Promise<ProviderResult> {
+    const timeout = Number(process.env.UPSTREAM_TIMEOUT_MS ?? 30000);
+    try {
+      const openApiResponse = await fetch('https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes', { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(timeout) });
+      if (openApiResponse.ok) {
+        const openApiRows = await openApiResponse.json() as Array<Record<string, unknown>>;
+        const rawDate = String(openApiRows[0]?.Date ?? '').replace(/\D/g, '');
+        const openApiDate = rawDate.length === 7 ? `${Number(rawDate.slice(0, 3)) + 1911}${rawDate.slice(3)}` : rawDate;
+        if (openApiDate === sourceDate(date)) {
+          const quotes = openApiRows.map((row) => normalizeOfficialQuote(date, row, 'TPEx', 'TPEx')).filter((quote): quote is StockQuote => Boolean(quote));
+          if (quotes.length < 5) throw new Error('TPEx OpenAPI 回應格式無法辨識或當日無資料');
+          const marketTurnover = openApiRows.reduce((total, row) => total + safeNumber(parseNumber(row.TransactionAmount)), 0);
+          return { quotes, source: 'TPEx', message: '已取得 TPEx OpenAPI 公開資料', marketTurnover };
+        }
+      }
+    } catch { /* OpenAPI 暫時失敗時改用可查歷史日期的官方端點。 */ }
+
     const formatted = dayjs(date).format('YYYY/MM/DD');
     const url = `https://www.tpex.org.tw/web/stock/aftertrading/DAILY_CLOSE_quotes/stk_quote_result.php?l=zh-tw&o=json&d=${formatted}&s=0,asc,0`;
-    const response = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(Number(process.env.UPSTREAM_TIMEOUT_MS ?? 15000)) });
+    const response = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(timeout) });
     if (!response.ok) throw new Error(`TPEx 回應失敗（HTTP ${response.status}）`);
     const data = await response.json() as { date?: string; tables?: Array<{ fields?: string[]; data?: unknown[][] }> };
     if (String(data.date ?? '') !== sourceDate(date)) throw new Error('TPEx 回傳日期與查詢日期不一致');

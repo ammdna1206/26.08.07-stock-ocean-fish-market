@@ -43,7 +43,7 @@ describe('官方行情欄位正規化', () => {
   });
 
   it('拒絕 TPEx 自動退回前一交易日的不同日期資料', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ date: '20260814', tables: [] }), { status: 200 })));
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ date: '20260814', tables: [] }), { status: 200 }))));
     await expect(new TpexProvider().fetchDaily('2026-08-17')).rejects.toThrow('回傳日期與查詢日期不一致');
   });
 
@@ -65,9 +65,23 @@ describe('官方行情欄位正規化', () => {
       ['006201', '元大富櫃50', '40', '0', '40', '40', '40', '40', '100', '2,000', '5'],
       ...['5347', '8299', '3105', '3293', '8069'].map((symbol) => [symbol, `股票${symbol}`, '10', '0', '10', '10', '10', '10', '100', '1,000', '5']),
     ];
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ date: '20260814', tables: [{ fields, data: rows }] }), { status: 200 })));
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ date: '20260814', tables: [{ fields, data: rows }] }), { status: 200 }))));
 
     const result = await new TpexProvider().fetchDaily('2026-08-14');
+    expect(result.quotes).toHaveLength(5);
+    expect(result.marketTurnover).toBe(7_000);
+  });
+
+  it('優先使用 TPEx OpenAPI 具名欄位取得最新交易日資料', async () => {
+    const rows = [
+      { Date: '1150814', SecuritiesCompanyCode: '006201', CompanyName: '元大富櫃50', Close: '40', Change: '0', Open: '40', High: '40', Low: '40', TradingShares: '100', TransactionAmount: '2000', TransactionNumber: '5' },
+      ...['5347', '8299', '3105', '3293', '8069'].map((symbol) => ({ Date: '1150814', SecuritiesCompanyCode: symbol, CompanyName: `股票${symbol}`, Close: '10', Change: '0', Open: '10', High: '10', Low: '10', TradingShares: '100', TransactionAmount: '1000', TransactionNumber: '5' })),
+    ];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(rows), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new TpexProvider().fetchDaily('2026-08-14');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(result.quotes).toHaveLength(5);
     expect(result.marketTurnover).toBe(7_000);
   });

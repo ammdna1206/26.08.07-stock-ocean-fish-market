@@ -35,7 +35,7 @@ npm start
 | `PORT` | `4000` | Express API 連接埠 |
 | `CLIENT_ORIGIN` | `http://localhost:5173` | CORS 允許來源，可用逗號分隔 |
 | `DATA_PROVIDER` | `auto` | `auto` 優先呼叫 TWSE／TPEx，失敗回退 `DEMO`；也可設 `demo` |
-| `UPSTREAM_TIMEOUT_MS` | `15000` | 官方資料請求逾時時間；TPEx 每日檔案較大，不宜設得過短 |
+| `UPSTREAM_TIMEOUT_MS` | `30000` | 官方資料請求逾時時間；TPEx 每日檔案較大，不宜設得過短 |
 | `DB_PATH` | `./data/market.sqlite` | SQLite 檔案位置 |
 
 ## 公開網址
@@ -63,7 +63,7 @@ npm start
 ## 官方資料來源
 
 - 臺灣證券交易所公開資料：`MI_INDEX` 每日收盤行情與交易資料；依官方漲跌符號還原正負值。
-- 證券櫃檯買賣中心公開資料：`DAILY_CLOSE_quotes/stk_quote_result.php` 每日收盤行情；依回傳欄名解析並校驗資料日期。
+- 證券櫃檯買賣中心公開資料：最新交易日優先使用 `tpex_mainboard_daily_close_quotes` OpenAPI，歷史日期回退 `DAILY_CLOSE_quotes/stk_quote_result.php`；兩者均校驗資料日期。
 - 官方資料會排除 ETF、債券、權證等非普通股商品，只保留四位數普通股代號。
 - TWSE 另提供 OpenAPI 入口，正式環境可依授權與欄位需求替換 `TwseProvider`：<https://openapi.twse.com.tw/>
 
