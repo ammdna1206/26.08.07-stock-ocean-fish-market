@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StockQuote } from '../../../shared/types';
-import { MarketService } from './market-service';
+import { canUseDailyCache, MarketService } from './market-service';
 
 function quote(symbol: string, market: 'TWSE' | 'TPEx', turnover: number): StockQuote {
   return {
@@ -24,5 +24,11 @@ describe('市場摘要成交金額', () => {
       { market: 'TWSE', turnover: 1_109_746_702_006 },
       { market: 'TPEx', turnover: 300_000_000_000 },
     ]);
+  });
+
+  it('部分官方市場快取逾時後會重新抓取，不會永久缺少 TPEx', () => {
+    const now = new Date('2026-08-17T08:00:00.000Z');
+    expect(canUseDailyCache({ source: 'TWSE', isDemo: false, updatedAt: '2026-08-17T07:58:00.000Z' }, '2026-08-14', 'auto', now)).toBe(false);
+    expect(canUseDailyCache({ source: 'TWSE+TPEx', isDemo: false, updatedAt: '2026-08-17T07:58:00.000Z' }, '2026-08-14', 'auto', now)).toBe(true);
   });
 });

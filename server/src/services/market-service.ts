@@ -16,6 +16,16 @@ export interface DailyResult {
   marketTurnover: Partial<Record<Market, number>>;
 }
 
+export function canUseDailyCache(cached: Pick<DailyResult, 'source' | 'isDemo' | 'updatedAt'>, tradeDate: string, providerMode: string, now = new Date()): boolean {
+  const age = now.getTime() - new Date(cached.updatedAt).getTime();
+  const taiwanDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(now);
+  const shortCacheFresh = age < Number(process.env.DEMO_CACHE_TTL_MS ?? 60_000);
+  if (providerMode === 'demo') return cached.isDemo && shortCacheFresh;
+  if (cached.isDemo) return shortCacheFresh;
+  const hasBothOfficialMarkets = cached.source.includes('TWSE') && cached.source.includes('TPEx');
+  return hasBothOfficialMarkets ? tradeDate !== taiwanDate || age < Number(process.env.OFFICIAL_CACHE_TTL_MS ?? 300_000) : shortCacheFresh;
+}
+
 export class MarketService {
   private readonly database: MarketDatabase;
   private readonly demo = new MockProvider();
@@ -29,12 +39,7 @@ export class MarketService {
     const providerMode = (process.env.DATA_PROVIDER ?? 'auto').toLowerCase();
     const cached = this.database.getDaily(tradeDate);
     if (cached) {
-      const age = Date.now() - new Date(cached.updatedAt).getTime();
-      const taiwanDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date());
-      const officialFresh = tradeDate !== taiwanDate || age < Number(process.env.OFFICIAL_CACHE_TTL_MS ?? 300_000);
-      const demoFresh = age < Number(process.env.DEMO_CACHE_TTL_MS ?? 60_000);
-      const canUseCache = providerMode === 'demo' ? cached.isDemo : cached.isDemo ? demoFresh : officialFresh;
-      if (canUseCache) return { ...cached, message: cached.isDemo ? '目前使用示範資料（SQLite 短期快取）' : '已讀取 SQLite 快取資料', failureCount: 0 };
+      if (canUseDailyCache(cached, tradeDate, providerMode)) return { ...cached, message: cached.isDemo ? '目前使用示範資料（SQLite 短期快取）' : '已讀取 SQLite 快取資料', failureCount: 0 };
     }
 
     let result: DailyResult | null = null;
