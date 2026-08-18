@@ -104,10 +104,8 @@ export async function getHistory(symbol: string, market: 'TWSE' | 'TPEx', from: 
   }
   if (market === 'TWSE') {
     const history = await fetchTwseHistory(symbol, from, to);
-    if (history.points.length > 0) {
-      const partial = history.failedMonths > 0 ? `；${history.failedMonths} 個月份暫時失敗` : '';
-      return { success: true, data: { ...history, from, to }, source: 'TWSE', isDemo: false, updatedAt: new Date().toISOString(), message: `已由瀏覽器取得 TWSE 官方歷史行情，共 ${history.points.length} 個交易日${partial}` };
-    }
+    const partial = history.failedMonths > 0 ? `；${history.failedMonths} 個月份暫時失敗` : '';
+    return { success: history.points.length > 0, data: { ...history, from, to }, source: 'TWSE', isDemo: false, updatedAt: new Date().toISOString(), message: `已由瀏覽器取得 TWSE 官方歷史行情，共 ${history.points.length} 個交易日${partial}` };
   }
   return (await api.get<ApiResponse<HistoryData>>(`/stocks/${symbol}/history`, { params: { market, from, to }, timeout: 180_000 })).data;
 }
