@@ -1,4 +1,5 @@
 import express, { type Request, type Response } from 'express';
+import dayjs from 'dayjs';
 import { z } from 'zod';
 import type { ApiResponse, StocksQuery } from '../../shared/types';
 import { normalizeTradeDate } from './utils/date';
@@ -86,9 +87,19 @@ export function createApiRouter(): express.Router {
   router.get('/stocks/:symbol/history', async (request, response) => {
     if (!/^[A-Za-z0-9-]{2,12}$/.test(request.params.symbol)) return failure(response, '股票代號格式無效');
     const days = Math.min(Math.max(Number(request.query.days) || 20, 5), 60);
-    const tradeDate = typeof request.query.date === 'string' ? parseDate(request.query.date) ?? undefined : undefined;
-    const data = await service.getHistory(request.params.symbol, days, tradeDate);
-    return reply(response, { success: data.points.length > 0, data, source: data.source, isDemo: data.isDemo, updatedAt: data.updatedAt, message: data.message });
+    const requestedTo = typeof request.query.to === 'string' ? parseDate(request.query.to) : typeof request.query.date === 'string' ? parseDate(request.query.date) : dayjs().format('YYYY-MM-DD');
+    if (!requestedTo) return failure(response, '歷史行情結束日期格式無效');
+    const requestedFrom = typeof request.query.from === 'string' ? parseDate(request.query.from) : dayjs(requestedTo).subtract(days * 2, 'day').format('YYYY-MM-DD');
+    if (!requestedFrom) return failure(response, '歷史行情開始日期格式無效');
+    const from = requestedFrom < '2019-01-01' ? '2019-01-01' : requestedFrom;
+    if (from > requestedTo) return failure(response, '歷史行情開始日期不可晚於結束日期');
+    const market = request.query.market === 'TWSE' || request.query.market === 'TPEx' ? request.query.market : undefined;
+    try {
+      const data = await service.getHistory(request.params.symbol, from, requestedTo, market);
+      return reply(response, { success: data.points.length > 0, data: { ...data, from, to: requestedTo }, source: data.source, isDemo: data.isDemo, updatedAt: data.updatedAt, message: data.message });
+    } catch (error) {
+      return failure(response, error instanceof Error ? error.message : '歷史行情取得失敗', 502);
+    }
   });
 
   return router;

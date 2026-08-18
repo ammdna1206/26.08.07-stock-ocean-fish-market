@@ -1,0 +1,28 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fetchOfficialHistoryMonth } from './history-provider';
+
+afterEach(() => vi.unstubAllGlobals());
+
+describe('官方個股月歷史行情', () => {
+  it('解析 TWSE 股數、成交金額與 OHLC', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      stat: 'OK', date: '20260801', data: [['115/08/17', '10,559,715', '43,090,307,420', '4,205.00', '4,225.00', '4,025.00', '4,050.00', '-160.00', '57,461', '']],
+    }), { status: 200 })));
+
+    await expect(fetchOfficialHistoryMonth('2454', 'TWSE', '2026-08')).resolves.toEqual([{
+      tradeDate: '2026-08-17', volume: 10_559_715, turnover: 43_090_307_420,
+      open: 4205, high: 4225, low: 4025, close: 4050, change: -160, transactionCount: 57_461,
+    }]);
+  });
+
+  it('將 TPEx 成交張數與成交仟元換算為股及元', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ tables: [{
+      date: '20260801', data: [['115/08/17', '84,401', '9,931,718', '111.00', '122.50', '108.50', '122.50', '11.00', '51,094']],
+    }] }), { status: 200 })));
+
+    await expect(fetchOfficialHistoryMonth('6182', 'TPEx', '2026-08')).resolves.toEqual([{
+      tradeDate: '2026-08-17', volume: 84_401_000, turnover: 9_931_718_000,
+      open: 111, high: 122.5, low: 108.5, close: 122.5, change: 11, transactionCount: 51_094,
+    }]);
+  });
+});

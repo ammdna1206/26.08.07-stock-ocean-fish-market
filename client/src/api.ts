@@ -25,6 +25,13 @@ export interface StocksData {
   pageSize: number;
 }
 
+export interface HistoryData {
+  points: HistoryPoint[];
+  from: string;
+  to: string;
+  failedMonths: number;
+}
+
 function demoResponse<T>(data: T, message: string): ApiResponse<T> {
   return { success: true, data, source: 'DEMO', isDemo: true, updatedAt: new Date().toISOString(), message };
 }
@@ -89,10 +96,10 @@ export async function getStock(symbol: string, date: string): Promise<ApiRespons
   return (await api.get<ApiResponse<{ quote: StockQuote | null }>>(`/stocks/${symbol}`, { params: { date } })).data;
 }
 
-export async function getHistory(symbol: string, date: string, days: number): Promise<ApiResponse<{ points: HistoryPoint[] }>> {
+export async function getHistory(symbol: string, market: 'TWSE' | 'TPEx', from: string, to: string): Promise<ApiResponse<HistoryData>> {
   if (staticDemoMode) {
-    const quote = buildStaticDemoQuotes(normalizeStaticDate(date)).find((item) => item.symbol.toLowerCase() === symbol.toLowerCase());
-    return demoResponse({ points: quote ? buildStaticHistory(quote, normalizeStaticDate(date), Math.min(Math.max(days, 5), 60)) : [] }, '公開網址目前使用內建示範近期走勢');
+    const quote = buildStaticDemoQuotes(normalizeStaticDate(to)).find((item) => item.symbol.toLowerCase() === symbol.toLowerCase());
+    return demoResponse({ points: quote ? buildStaticHistory(quote, normalizeStaticDate(to), 60) : [], from, to, failedMonths: 0 }, '公開網址目前使用內建示範近期走勢');
   }
-  return (await api.get<ApiResponse<{ points: HistoryPoint[] }>>(`/stocks/${symbol}/history`, { params: { date, days } })).data;
+  return (await api.get<ApiResponse<HistoryData>>(`/stocks/${symbol}/history`, { params: { market, from, to }, timeout: 180_000 })).data;
 }

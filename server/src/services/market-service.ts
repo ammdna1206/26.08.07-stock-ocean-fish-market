@@ -2,6 +2,7 @@ import dayjs from 'dayjs';
 import type { HistoryPoint, Market, MarketSummary, StocksQuery, StockQuote } from '../../../shared/types';
 import { MarketDatabase } from '../db';
 import { buildDemoQuotes, MockProvider, TpexProvider, TwseProvider } from '../data/provider';
+import { fetchOfficialHistoryMonth } from '../data/history-provider';
 import { directionOf } from '../utils/number';
 import { isWeekend, nextBusinessDate, previousBusinessDate } from '../utils/date';
 
@@ -121,26 +122,49 @@ export class MarketService {
     return { quote, source: daily.source, isDemo: daily.isDemo, updatedAt: daily.updatedAt, message: quote ? daily.message : '找不到此股票，可能尚未上市或代號格式不同' };
   }
 
-  async getHistory(symbol: string, days: number, tradeDate?: string): Promise<{ points: HistoryPoint[]; source: string; isDemo: boolean; updatedAt: string; message: string }> {
-    const safeDays = Math.min(Math.max(days, 5), 60);
-    const date = tradeDate ?? dayjs().format('YYYY-MM-DD');
-    const key = `v2:${date}:${symbol}:${safeDays}`;
-    const cached = this.database.getHistory(key);
-    if (cached) return { ...(cached.payload as { points: HistoryPoint[] }), source: cached.source, isDemo: cached.isDemo, updatedAt: cached.updatedAt, message: '已讀取近期走勢快取' };
-    const daily = await this.getDaily(date);
-    const quote = daily.quotes.find((item) => item.symbol.toLowerCase() === symbol.toLowerCase());
-    if (!quote) return { points: [], source: daily.source, isDemo: daily.isDemo, updatedAt: daily.updatedAt, message: '找不到此股票的近期走勢' };
-    if (!daily.isDemo) return { points: [], source: daily.source, isDemo: false, updatedAt: daily.updatedAt, message: '官方歷史走勢尚未由本平台載入，未虛構數字' };
-    const points: HistoryPoint[] = [];
-    for (let index = safeDays - 1; index >= 0; index -= 1) {
-      const currentDate = dayjs(date).subtract(index, 'day');
-      if (currentDate.day() === 0 || currentDate.day() === 6) continue;
-      const variation = Math.sin((index + quote.symbol.charCodeAt(0)) * 1.7) * 0.022;
-      const close = Number((Math.max(0.01, (quote.close ?? 0) * (1 + variation))).toFixed(2));
-      points.push({ tradeDate: currentDate.format('YYYY-MM-DD'), open: Number((close * 0.992).toFixed(2)), high: Number((close * 1.014).toFixed(2)), low: Number((close * 0.985).toFixed(2)), close, volume: Math.round(quote.volume * (0.62 + Math.abs(variation) * 10)) });
+  async getHistory(symbol: string, from: string, to: string, market?: Market): Promise<{ points: HistoryPoint[]; source: string; isDemo: boolean; updatedAt: string; message: string; failedMonths: number }> {
+    let resolvedMarket = market;
+    if (!resolvedMarket) {
+      const daily = await this.getDaily(to);
+      const quote = daily.quotes.find((item) => item.symbol.toLowerCase() === symbol.toLowerCase());
+      if (!quote) return { points: [], source: daily.source, isDemo: daily.isDemo, updatedAt: daily.updatedAt, message: '找不到此股票的歷史行情', failedMonths: 0 };
+      resolvedMarket = quote.market;
     }
-    const payload = { points };
-    this.database.setHistory(key, payload, 'DEMO', true, dayjs().toISOString());
-    return { ...payload, source: 'DEMO', isDemo: true, updatedAt: dayjs().toISOString(), message: '目前使用示範近期走勢' };
+
+    const months: string[] = [];
+    let cursor = dayjs(from).startOf('month');
+    const lastMonth = dayjs(to).startOf('month');
+    while (!cursor.isAfter(lastMonth) && months.length < 120) {
+      months.push(cursor.format('YYYY-MM'));
+      cursor = cursor.add(1, 'month');
+    }
+
+    const concurrency = Math.min(Math.max(Number(process.env.HISTORY_FETCH_CONCURRENCY ?? 3), 1), 6);
+    const points: HistoryPoint[] = [];
+    let failedMonths = 0;
+    for (let index = 0; index < months.length; index += concurrency) {
+      const batch = months.slice(index, index + concurrency);
+      const settled = await Promise.allSettled(batch.map(async (month) => {
+        const key = `official-v1:${resolvedMarket}:${symbol}:${month}`;
+        const cached = this.database.getHistory(key);
+        const isCurrentMonth = month === new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit' }).format(new Date());
+        const cacheFresh = cached && (!isCurrentMonth || Date.now() - new Date(cached.updatedAt).getTime() < 300_000);
+        if (cacheFresh) return (cached.payload as { points: HistoryPoint[] }).points;
+        const monthlyPoints = await fetchOfficialHistoryMonth(symbol, resolvedMarket as Market, month);
+        this.database.setHistory(key, { points: monthlyPoints }, resolvedMarket as Market, false, dayjs().toISOString());
+        return monthlyPoints;
+      }));
+      settled.forEach((result) => {
+        if (result.status === 'fulfilled') points.push(...result.value);
+        else failedMonths += 1;
+      });
+    }
+
+    const unique = [...new Map(points.filter((item) => item.tradeDate >= from && item.tradeDate <= to).map((item) => [item.tradeDate, item])).values()]
+      .sort((left, right) => left.tradeDate.localeCompare(right.tradeDate));
+    if (!unique.length && failedMonths === months.length) throw new Error(`${resolvedMarket} 歷史行情暫時無法取得`);
+    const updatedAt = dayjs().toISOString();
+    const partial = failedMonths > 0 ? `；${failedMonths} 個月份暫時失敗` : '';
+    return { points: unique, source: resolvedMarket, isDemo: false, updatedAt, message: `已取得 ${from} 至 ${to} 官方歷史行情，共 ${unique.length} 個交易日${partial}`, failedMonths };
   }
 }

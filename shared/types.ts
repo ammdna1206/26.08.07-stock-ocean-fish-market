@@ -34,6 +34,9 @@ export interface HistoryPoint {
   low: number | null;
   close: number | null;
   volume: number;
+  turnover?: number;
+  transactionCount?: number | null;
+  change?: number | null;
 }
 
 export interface MarketSummary {
