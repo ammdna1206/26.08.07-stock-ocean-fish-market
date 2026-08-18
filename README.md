@@ -70,7 +70,7 @@ npm start
 - 臺灣證券交易所公開資料：`MI_INDEX` 每日收盤行情與交易資料；依官方漲跌符號還原正負值。
 - 證券櫃檯買賣中心公開資料：最新交易日優先使用 `tpex_mainboard_daily_close_quotes` OpenAPI，歷史日期回退 `DAILY_CLOSE_quotes/stk_quote_result.php`；兩者均校驗資料日期。
 - 官方資料會排除 ETF、債券、權證等非普通股商品，只保留四位數普通股代號。
-- 個股歷史行情：TWSE 使用 `STOCK_DAY` 月資料；TPEx 使用 `afterTrading/tradingStock` 月資料。TPEx 歷史欄位以張、仟元公布，平台會換算為股、元。
+- 個股歷史行情：TWSE 使用允許跨來源讀取的 `STOCK_DAY` 月資料，由瀏覽器直接向官方網站取得，避免公開伺服器共用 IP 流量限制；TPEx 使用後端代理 `afterTrading/tradingStock` 月資料。TPEx 歷史欄位以張、仟元公布，平台會換算為股、元。
 - TWSE 另提供 OpenAPI 入口，正式環境可依授權與欄位需求替換 `TwseProvider`：<https://openapi.twse.com.tw/>
 
 前端不直接呼叫官方 API，所有上游請求由 Express Provider 代理、清理與寫入 SQLite。不同日期的快取以 `trade_date` 為鍵；歷史走勢則依市場、股票與月份分開快取。

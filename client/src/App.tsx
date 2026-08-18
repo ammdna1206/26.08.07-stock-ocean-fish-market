@@ -28,6 +28,7 @@ function App() {
   const [detail, setDetail] = useState<StockQuote | null>(null);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyFailedMonths, setHistoryFailedMonths] = useState(0);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
@@ -101,9 +102,9 @@ function App() {
   }, [date, dateStatus?.isTradingDay, query]);
 
   useEffect(() => {
-    if (!selected) { setDetail(null); setHistory([]); setHistoryLoading(false); return; }
+    if (!selected) { setDetail(null); setHistory([]); setHistoryLoading(false); setHistoryFailedMonths(0); return; }
     let cancelled = false;
-    setDetail(selected); setHistory([]);
+    setDetail(selected); setHistory([]); setHistoryFailedMonths(0);
     void getStock(selected.symbol, date).then((response) => { if (!cancelled && response.success && response.data.quote) setDetail(response.data.quote); }).catch(() => undefined);
     return () => { cancelled = true; };
   }, [date, selected]);
@@ -119,11 +120,11 @@ function App() {
     try {
       const response = await getHistory(detail.symbol, detail.market, '2019-01-01', date);
       const currentPoint: HistoryPoint = { tradeDate: detail.tradeDate, open: detail.open, high: detail.high, low: detail.low, close: detail.close, volume: detail.volume, turnover: detail.turnover, transactionCount: detail.transactionCount, change: detail.change };
-      const sourcePoints = detail.source === 'DEMO' ? response.data.points : [...response.data.points, currentPoint];
+      const sourcePoints = detail.source === 'DEMO' ? response.data.points : [...history, ...response.data.points, currentPoint];
       const points = [...new Map(sourcePoints.map((item) => [item.tradeDate, item])).values()]
         .filter((item) => item.tradeDate >= '2019-01-01' && item.tradeDate <= date)
         .sort((left, right) => left.tradeDate.localeCompare(right.tradeDate));
-      setHistory(points); setNotice(response.message);
+      setHistory(points); setHistoryFailedMonths(response.data.failedMonths); setNotice(response.message);
     } catch { setNotice('2019年至今官方歷史行情載入失敗，仍保留當日行情'); }
     finally { setHistoryLoading(false); }
   };
@@ -168,7 +169,7 @@ function App() {
       {summary && <Dashboard summary={summary} isDemo={isDemo} onSelect={selectBySymbol} />}
     </main>
 
-    {detail && <aside className="detail-drawer"><div className="drawer-header"><div><p className="eyebrow">SELECTED STOCK</p><h2>{detail.symbol} <span>{detail.name}</span></h2></div><button className="icon-button" onClick={() => setSelected(null)} aria-label="關閉詳細資料">×</button></div><div className="drawer-meta"><span>{detail.market === 'TWSE' ? '上市 TWSE' : '上櫃 TPEx'}</span><span>{detail.industry}</span><span>{detail.tradeDate}</span></div><div className={`detail-price ${Number(detail.changePercent) >= 0 ? 'text-up' : 'text-down'}`}><strong>{number(detail.close, 2)}</strong><span>{number(detail.change, 2)}　{percent(detail.changePercent)}</span></div><div className="metric-grid">{[['開盤價', number(detail.open, 2)], ['最高價', number(detail.high, 2)], ['最低價', number(detail.low, 2)], ['昨收', number(detail.previousClose, 2)], ['成交股數', number(detail.volume)], ['成交筆數', number(detail.transactionCount)], ['成交金額', number(detail.turnover)], ['當日振幅', percent(detail.amplitude)], ['本益比', number(detail.peRatio, 2)], ['殖利率', percent(detail.dividendYield)], ['股價淨值比', number(detail.priceToBookRatio, 2)], ['交易狀態', detail.status || '一般交易']].map(([label, value]) => <div className="metric-card" key={label}><span>{label}</span><b>{value}</b></div>)}</div><div className="chart-section"><div className="chart-title"><span>2019年至今官方走勢</span>{!history.length && <button className="link-button" onClick={() => void loadHistory()} disabled={historyLoading}>{historyLoading ? '載入中…' : '載入歷史行情'}</button>}</div>{history.length > 0 && <div className="history-stats"><span>{history[0].tradeDate}～{history.at(-1)?.tradeDate}</span><span>{number(history.length)} 個交易日</span><span>累計量 {number(history.reduce((sum, item) => sum + item.volume, 0))}</span><span>累計金額 {number(history.reduce((sum, item) => sum + (item.turnover ?? 0), 0))}</span><span>累計筆數 {number(history.reduce((sum, item) => sum + (item.transactionCount ?? 0), 0))}</span></div>}<StockChart quote={detail} history={history} /><VolumeChart quote={detail} history={history} /></div><div className="drawer-actions"><button className={`secondary-button ${selectedIsFavorite ? 'favorite-active' : ''}`} onClick={toggleFavorite}>{selectedIsFavorite ? '★ 已加入自選' : '☆ 加入自選'}</button><button className="secondary-button" onClick={() => void copyInfo()}>▣ 複製資訊</button></div><div className="data-source-note">資料來源：{detail.source}<br />更新時間：{dayjs(detail.updatedAt).format('YYYY-MM-DD HH:mm:ss')}<br />未提供欄位以「資料來源未提供」表示。</div></aside>}
+    {detail && <aside className="detail-drawer"><div className="drawer-header"><div><p className="eyebrow">SELECTED STOCK</p><h2>{detail.symbol} <span>{detail.name}</span></h2></div><button className="icon-button" onClick={() => setSelected(null)} aria-label="關閉詳細資料">×</button></div><div className="drawer-meta"><span>{detail.market === 'TWSE' ? '上市 TWSE' : '上櫃 TPEx'}</span><span>{detail.industry}</span><span>{detail.tradeDate}</span></div><div className={`detail-price ${Number(detail.changePercent) >= 0 ? 'text-up' : 'text-down'}`}><strong>{number(detail.close, 2)}</strong><span>{number(detail.change, 2)}　{percent(detail.changePercent)}</span></div><div className="metric-grid">{[['開盤價', number(detail.open, 2)], ['最高價', number(detail.high, 2)], ['最低價', number(detail.low, 2)], ['昨收', number(detail.previousClose, 2)], ['成交股數', number(detail.volume)], ['成交筆數', number(detail.transactionCount)], ['成交金額', number(detail.turnover)], ['當日振幅', percent(detail.amplitude)], ['本益比', number(detail.peRatio, 2)], ['殖利率', percent(detail.dividendYield)], ['股價淨值比', number(detail.priceToBookRatio, 2)], ['交易狀態', detail.status || '一般交易']].map(([label, value]) => <div className="metric-card" key={label}><span>{label}</span><b>{value}</b></div>)}</div><div className="chart-section"><div className="chart-title"><span>2019年至今官方走勢</span>{(!history.length || historyFailedMonths > 0) && <button className="link-button" onClick={() => void loadHistory()} disabled={historyLoading}>{historyLoading ? '載入中…' : history.length ? '重試缺少月份' : '載入歷史行情'}</button>}</div>{historyFailedMonths > 0 && <div className="history-warning">官方網站限制流量，本次尚有 {historyFailedMonths} 個月份未取得；圖表不會用推估值補齊。</div>}{history.length > 0 && <div className="history-stats"><span>{history[0].tradeDate}～{history.at(-1)?.tradeDate}</span><span>{number(history.length)} 個交易日</span><span>累計量 {number(history.reduce((sum, item) => sum + item.volume, 0))}</span><span>累計金額 {number(history.reduce((sum, item) => sum + (item.turnover ?? 0), 0))}</span><span>累計筆數 {number(history.reduce((sum, item) => sum + (item.transactionCount ?? 0), 0))}</span></div>}<StockChart quote={detail} history={history} /><VolumeChart quote={detail} history={history} /></div><div className="drawer-actions"><button className={`secondary-button ${selectedIsFavorite ? 'favorite-active' : ''}`} onClick={toggleFavorite}>{selectedIsFavorite ? '★ 已加入自選' : '☆ 加入自選'}</button><button className="secondary-button" onClick={() => void copyInfo()}>▣ 複製資訊</button></div><div className="data-source-note">資料來源：{detail.source}<br />更新時間：{dayjs(detail.updatedAt).format('YYYY-MM-DD HH:mm:ss')}<br />未提供欄位以「資料來源未提供」表示。</div></aside>}
     <footer className="disclaimer">本平台資料僅供資訊展示與教學研究使用，不構成任何投資建議；實際交易資訊以臺灣證券交易所及證券櫃檯買賣中心公告為準。</footer>
   </div>;
 }
