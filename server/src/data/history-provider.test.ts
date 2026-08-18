@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fetchOfficialHistoryMonth } from './history-provider';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  delete process.env.HISTORY_RETRY_DELAY_MS;
+});
 
 describe('官方個股月歷史行情', () => {
   it('解析 TWSE 股數、成交金額與 OHLC', async () => {
@@ -24,5 +27,16 @@ describe('官方個股月歷史行情', () => {
       tradeDate: '2026-08-17', volume: 84_401_000, turnover: 9_931_718_000,
       open: 111, high: 122.5, low: 108.5, close: 122.5, change: 11, transactionCount: 51_094,
     }]);
+  });
+
+  it('官方暫時失敗時會重試單月請求', async () => {
+    process.env.HISTORY_RETRY_DELAY_MS = '0';
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 429 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ stat: 'OK', date: '20190101', data: [] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchOfficialHistoryMonth('2454', 'TWSE', '2019-01')).resolves.toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

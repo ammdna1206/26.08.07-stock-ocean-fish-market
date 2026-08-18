@@ -139,7 +139,8 @@ export class MarketService {
       cursor = cursor.add(1, 'month');
     }
 
-    const concurrency = Math.min(Math.max(Number(process.env.HISTORY_FETCH_CONCURRENCY ?? 3), 1), 6);
+    const concurrency = Math.min(Math.max(Number(process.env.HISTORY_FETCH_CONCURRENCY ?? 1), 1), 6);
+    const requestDelay = Math.max(Number(process.env.HISTORY_FETCH_DELAY_MS ?? 500), 0);
     const points: HistoryPoint[] = [];
     let failedMonths = 0;
     for (let index = 0; index < months.length; index += concurrency) {
@@ -151,6 +152,7 @@ export class MarketService {
         const cacheFresh = cached && (!isCurrentMonth || Date.now() - new Date(cached.updatedAt).getTime() < 300_000);
         if (cacheFresh) return (cached.payload as { points: HistoryPoint[] }).points;
         const monthlyPoints = await fetchOfficialHistoryMonth(symbol, resolvedMarket as Market, month);
+        if (requestDelay > 0) await new Promise((resolve) => setTimeout(resolve, requestDelay));
         this.database.setHistory(key, { points: monthlyPoints }, resolvedMarket as Market, false, dayjs().toISOString());
         return monthlyPoints;
       }));

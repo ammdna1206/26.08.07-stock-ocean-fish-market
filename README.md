@@ -37,7 +37,10 @@ npm start
 | `DATA_PROVIDER` | `auto` | `auto` 優先呼叫 TWSE／TPEx，失敗回退 `DEMO`；也可設 `demo` |
 | `UPSTREAM_TIMEOUT_MS` | `30000` | 官方資料請求逾時時間；TPEx 每日檔案較大，不宜設得過短 |
 | `HISTORY_UPSTREAM_TIMEOUT_MS` | `20000` | 單一月份官方個股歷史資料請求逾時時間 |
-| `HISTORY_FETCH_CONCURRENCY` | `3` | 歷史月份同時抓取數，限制為1～6 |
+| `HISTORY_FETCH_CONCURRENCY` | `1` | 歷史月份同時抓取數，限制為1～6；公開站建議維持1以避免官方流量限制 |
+| `HISTORY_FETCH_DELAY_MS` | `500` | 歷史月份請求間隔毫秒數 |
+| `HISTORY_FETCH_RETRIES` | `2` | 單月官方請求重試次數，限制為1～3 |
+| `HISTORY_RETRY_DELAY_MS` | `800` | 歷史月份重試的基礎等待毫秒數 |
 | `DB_PATH` | `./data/market.sqlite` | SQLite 檔案位置 |
 
 ## 公開網址
