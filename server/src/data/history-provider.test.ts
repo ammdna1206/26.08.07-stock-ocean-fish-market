@@ -39,4 +39,10 @@ describe('官方個股月歷史行情', () => {
     await expect(fetchOfficialHistoryMonth('2454', 'TWSE', '2019-01')).resolves.toEqual([]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it('官方非成功狀態會回報可重試錯誤', async () => {
+    process.env.HISTORY_RETRY_DELAY_MS = '0';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ stat: '很抱歉，沒有符合條件的資料!' }), { status: 200 })));
+    await expect(fetchOfficialHistoryMonth('2454', 'TWSE', '2019-01')).rejects.toThrow('TWSE 歷史資料暫時無法取得');
+  });
 });
