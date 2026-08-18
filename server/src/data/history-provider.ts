@@ -49,7 +49,7 @@ export async function fetchOfficialHistoryMonth(symbol: string, market: Market, 
     }
   }
   if (!data) throw lastError instanceof Error ? lastError : new Error(`${market} 歷史資料暫時無法取得`);
-  if (market === 'TWSE' && data.stat !== 'OK') return [];
+  if (market === 'TWSE' && data.stat !== 'OK') throw new Error(`TWSE 歷史資料暫時無法取得（${data.stat || '未知狀態'}）`);
   const responseDate = String(market === 'TWSE' ? data.date ?? '' : data.tables?.[0]?.date ?? '');
   if (responseDate && !responseDate.startsWith(month.replace('-', ''))) throw new Error(`${market} 歷史資料月份不一致`);
   const rows = market === 'TWSE' ? data.data ?? [] : data.tables?.[0]?.data ?? [];
