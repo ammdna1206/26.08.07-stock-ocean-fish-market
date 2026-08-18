@@ -157,7 +157,7 @@ export class MarketService {
         return monthlyPoints;
       }));
       settled.forEach((result) => {
-        if (result.status === 'fulfilled') points.push(...result.value);
+        if (result.status === 'fulfilled' && result.value.length > 0) points.push(...result.value);
         else failedMonths += 1;
       });
     }
