@@ -13,5 +13,13 @@ services:
         value: https://ammdna1206.github.io
       - key: UPSTREAM_TIMEOUT_MS
         value: "30000"
+      - key: HISTORY_UPSTREAM_TIMEOUT_MS
+        value: "6000"
+      - key: HISTORY_FETCH_CONCURRENCY
+        value: "4"
+      - key: HISTORY_FETCH_DELAY_MS
+        value: "0"
+      - key: HISTORY_FETCH_RETRIES
+        value: "1"
       - key: DB_PATH
         value: /tmp/market.sqlite
