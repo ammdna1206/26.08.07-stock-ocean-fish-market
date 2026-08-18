@@ -4,6 +4,7 @@ import type { ApiResponse, MarketSummary, StockQuote, HistoryPoint, StocksQuery 
 import { buildStaticDemoQuotes, buildStaticHistory, normalizeStaticDate } from './static-demo';
 
 const staticDemoMode = import.meta.env.VITE_STATIC_DEMO === 'true';
+export const usesStaticDemoData = staticDemoMode;
 const api = axios.create({ baseURL: import.meta.env.VITE_API_BASE_URL || '/api', timeout: 45_000 });
 
 export interface DateStatus {

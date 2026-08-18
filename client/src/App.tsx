@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dayjs from 'dayjs';
 import type { HistoryPoint, MarketSummary, StockQuote } from '../../shared/types';
-import { getDateStatus, getHistory, getStock, getStocks, getSummary } from './api';
+import { getDateStatus, getHistory, getStock, getStocks, getSummary, usesStaticDemoData } from './api';
 import type { DateStatus } from './api';
 import { FishCanvas } from './components/FishCanvas';
 import { StockChart, VolumeChart } from './components/StockChart';
-import { latestCompletedTradingDate } from './trading-date';
+import { latestCompletedTradingDate, resolveLatestOfficialDate } from './trading-date';
 import './styles.css';
 
 const FAVORITES_KEY = 'stock-ocean-favorites';
@@ -61,12 +61,22 @@ function App() {
       if (!statusResponse.data.isTradingDay) {
         setStocks([]); setSummary(null); setNotice('此日期不是台股交易日，是否改為查詢前一個交易日？'); setLoading(false); setProgress(0); return;
       }
-      setNotice('正在向後端取得行情，會優先使用官方資料，無法連線時自動切換示範資料。');
-      const stocksResponse = await getStocks(targetDate, query);
-      const summaryResponse = await getSummary(targetDate);
+      setNotice('正在取得行情；當日資料尚未發布時，會自動尋找最近的官方交易日。');
+      const resolved = usesStaticDemoData
+        ? { date: targetDate, response: await getStocks(targetDate, query), usedFallback: false }
+        : await resolveLatestOfficialDate(targetDate, (candidate) => getStocks(candidate, query));
+      const stocksResponse = resolved.response;
+      const summaryResponse = await getSummary(resolved.date);
+      if (resolved.usedFallback) {
+        setDate(resolved.date);
+        setDateStatus((await getDateStatus(resolved.date)).data);
+      }
       setProgress(82);
       if (!stocksResponse.success) throw new Error(stocksResponse.message);
-      setStocks(stocksResponse.data.stocks); setSummary(summaryResponse.data); setSource(stocksResponse.source); setIsDemo(stocksResponse.isDemo); setUpdatedAt(stocksResponse.updatedAt); setNotice(stocksResponse.message); setProgress(100);
+      const resolvedNotice = resolved.usedFallback && !stocksResponse.isDemo
+        ? `${targetDate} 尚無官方收盤資料，已自動顯示最近官方交易日 ${resolved.date}`
+        : stocksResponse.message;
+      setStocks(stocksResponse.data.stocks); setSummary(summaryResponse.data); setSource(stocksResponse.source); setIsDemo(stocksResponse.isDemo); setUpdatedAt(stocksResponse.updatedAt); setNotice(resolvedNotice); setProgress(100);
       setTimeout(() => setProgress(0), 500);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '資料取得失敗，請稍後重試'); setNotice('可按「載入示範資料」繼續操作'); setStocks([]); setSummary(null); setProgress(0);
